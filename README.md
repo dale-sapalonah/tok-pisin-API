@@ -8,4 +8,4 @@ API endpoint. It is basically a dictionary of sorts that attempts at making the 
 who wishes to understand it.
 
 I am learning as I build so I acknowledge that there is a long way to go in terms of Python best practices and mastery of the many technologies/frameworks
-that go into building such a project in a more robusta and secure manner.
+that go into building such a project in a more robust and secure manner.
