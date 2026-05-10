@@ -1,38 +1,61 @@
-from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
 import json
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 
-jsonfile = 'tokpisin-english.json'
+DATA_FILE = Path(__file__).parent / "tokpisin-english.json"
 
-app = FastAPI()
-
-with open(jsonfile, 'r') as f:
-    data = json.load(f)
+data: dict[str, str] = {}
 
 
-class PostSchema(BaseModel):
-    """Schema for user defined values to be passed in from the front end"""
-    english: str
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    with DATA_FILE.open("r", encoding="utf-8") as f:
+        data.update(json.load(f))
+    yield
+
+
+app = FastAPI(
+    title="Tok Pisin API",
+    description="A dictionary API for translating Tok Pisin words to English.",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+
+class WordEntry(BaseModel):
     tokpisin: str
-
-    def __repr__(self) -> str:
-        return f'PostSchema(tokpisin="{self.tokpisin}", english="{self.english}")'
+    english: str
 
 
-@app.get("/translate/{t_word}")
-def translate(t_word: str):
-    for key, value in data.items():
-        if t_word.lower() == key:
-            return {"english": value}
-        elif t_word.lower() not in data.keys():
-            raise HTTPException(status_code=404, detail=f"{t_word} does not exist")
+@app.get("/")
+def root():
+    return {"message": "Tok Pisin API", "total_entries": len(data)}
 
 
-@app.post("/post")
-def update_dict(post: PostSchema):  # <- post = PostSchema(tokpisin={}, english={})
-    if post.tokpisin.lower() in data.keys():
-        return {"data": f"{post.tokpisin} already exists"}
-    print(post)
-    return {"data": post}
+@app.get("/translate/{word}")
+def translate(word: str):
+    key = word.lower().strip()
+    translation = data.get(key)
+    if translation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"'{word}' was not found in the dictionary",
+        )
+    return {"tokpisin": key, "english": translation}
 
-    # create a data class for the schema for this post operation
+
+@app.post("/words", status_code=status.HTTP_201_CREATED)
+def add_word(entry: WordEntry):
+    key = entry.tokpisin.lower().strip()
+    if key in data:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"'{entry.tokpisin}' already exists",
+        )
+    data[key] = entry.english
+    with DATA_FILE.open("w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+    return {"tokpisin": key, "english": entry.english}
